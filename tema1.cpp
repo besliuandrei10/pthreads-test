@@ -5,7 +5,7 @@ using namespace std;
 
 bool compareByLength(const myFile &a, const myFile &b)
 {
-    return a.size > b.size;
+    return a.size < b.size;
 }
 
 int myPow(const int &base, const int &pow) {
@@ -81,8 +81,36 @@ void Precalculate(const int &R,
 void *mapperFunction(void *arg) {
     threadData* info = (threadData*) arg;
     commonData data = *(info->data);
+    myFile currentFile;
 
-    printf("Helo from mapper: %d\n", info->id);
+    // GET FILE TO WORK ON
+    do 
+    {
+        pthread_mutex_lock(data.mutex);
+        if (data.files.size() != 0) {
+            currentFile = data.files.back();
+            data.files.pop_back();
+        } else {
+            pthread_mutex_unlock(data.mutex);
+            break;
+        }
+        pthread_mutex_unlock(data.mutex);
+
+        ifstream f;
+        f.open(currentFile.name);
+        int n;
+        f >> n;
+        for(int i = 0; i < n; i++) {
+            int number;
+            f >> number;
+
+            for(int pwrCheck = 0; pwrCheck < data.R; pwrCheck++) {
+                if(data.precalculated[pwrCheck].find(number) != data.precalculated[0].end()) 
+                { data.mapperResults[info->id][pwrCheck].push_back(number); }
+            }
+        }
+    } while(1);
+
     pthread_barrier_wait(data.barrier);
     return NULL;
 }
@@ -95,7 +123,7 @@ void *reducerFunction(void *arg) {
     commonData data = *(info->data);
 
     pthread_barrier_wait(data.barrier);
-    printf("Helo from reducer: %d\n", info->id);
+    printf("Hello from reducer: %d\n", info->id);
 
     return NULL;
 }
@@ -104,6 +132,7 @@ int main(int argc, char* argv[]) {
     
     // VARIABLES
     pthread_barrier_t barrier;
+    pthread_mutex_t mutex;
     int M = 0; // Number of Mappers.
     int R = 0; // Number of Reducers.
     char* filepath; // Path to file.
@@ -131,12 +160,14 @@ int main(int argc, char* argv[]) {
     Precalculate(R, precalcPowers);
 
     // Lists of mapper outputs
-    list<list<int>> mapperResults(M, list<int>());
+    vector<vector<list<int>>> mapperResults(M, vector<list<int>>(R, list<int>()));
 
     // Create Thread arguments
     pthread_barrier_init(&barrier, NULL, R + M);
+    pthread_mutex_init(&mutex, NULL);
     commonData data(precalcPowers, files, mapperResults, R);
     data.barrier = &barrier;
+    data.mutex = &mutex;
 
     // THREAD AREA
     pthread_t mappers[M];
@@ -178,6 +209,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    
+
     for(int id = 0; id < R; id++) {
         r = pthread_join(reducers[id], &status);
 
@@ -189,5 +222,8 @@ int main(int argc, char* argv[]) {
 
     // FREE AREA
     pthread_barrier_destroy(&barrier);
+    pthread_mutex_destroy(&mutex);
+    free(mappersData);
+    free(reducersData);
     return 0;
 }
