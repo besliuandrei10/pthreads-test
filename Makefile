@@ -1,5 +1,5 @@
 CC = g++
-FLAGS = -Wall -lpthread
+FLAGS = -Wall -pthread
 
 build:
 	$(CC) $(FLAGS) -I. -o tema1 tema1.cpp

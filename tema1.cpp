@@ -1,31 +1,46 @@
 #include "tema1.h"
+#define POW_OFFSET 2
+
+using namespace std;
 
 bool compareByLength(const myFile &a, const myFile &b)
 {
     return a.size > b.size;
 }
 
-std::vector<myFile> readInputFiles(const std::string &filename) 
+int myPow(const int &base, const int &pow) {
+    int output = 1;
+    for(int i = 0; i < pow; i++) {
+        output *= base;
+    }
+
+    return (output < 0)? -1 : output;
+}
+
+/*
+ *  Reads filenames from given filename and adds them to the vector of files to be mapped from.
+*/
+vector<myFile> readInputFiles(const string &filename) 
 {
     // Open file containing mapper file names.
-    std::ifstream f;
+    ifstream f;
     f.open(filename);
     
     // Read number of entries.
     int n;
     f >> n;
 
-    std::vector<myFile> files;
+    vector<myFile> files;
     for(auto i = 0; i < n; i++) {
-        std::string mapperFile;
+        string mapperFile;
         f >> mapperFile;
 
         // Get file size.
         int file_size;
 
-        std::ifstream in_file;
+        ifstream in_file;
         in_file.open(mapperFile);
-        in_file.seekg(0, std::ios::end);
+        in_file.seekg(0, ios::end);
         file_size = in_file.tellg();
         in_file.close();
 
@@ -35,13 +50,60 @@ std::vector<myFile> readInputFiles(const std::string &filename)
         files[i].name = mapperFile;
     }
 
-    std::sort(files.begin(), files.end(), compareByLength);
+    sort(files.begin(), files.end(), compareByLength);
     return files;
+}
+
+/*
+ * Precalculates powers based on the number of reducers.
+*/
+void Precalculate(const int &R,
+                  vector<unordered_set<int>> &precalcPowers) {
+
+    for(int i = 0; i < R; i++) {
+        int number = -1; 
+        int base = 1;
+        int power = i + POW_OFFSET;
+
+        do
+        {
+            number = myPow(base, power);
+            precalcPowers[i].insert(number);
+            base++;
+        } while (number != -1);
+    }
 
 }
 
-int main(int argc, char* argv[]) {
+/*
+ * Mapper func.
+*/
+void *mapperFunction(void *arg) {
+    threadData* info = (threadData*) arg;
+    commonData data = *(info->data);
 
+    printf("Helo from mapper: %d\n", info->id);
+    pthread_barrier_wait(data.barrier);
+    return NULL;
+}
+
+/*
+ * Reducer func.
+*/
+void *reducerFunction(void *arg) {
+    threadData* info = (threadData*) arg;
+    commonData data = *(info->data);
+
+    pthread_barrier_wait(data.barrier);
+    printf("Helo from reducer: %d\n", info->id);
+
+    return NULL;
+}
+
+int main(int argc, char* argv[]) {
+    
+    // VARIABLES
+    pthread_barrier_t barrier;
     int M = 0; // Number of Mappers.
     int R = 0; // Number of Reducers.
     char* filepath; // Path to file.
@@ -53,15 +115,79 @@ int main(int argc, char* argv[]) {
     }
 
     // Extract parameters.
-    M = atoi(argv[0]);
-    R = atoi(argv[1]);
+    M = atoi(argv[1]);
+    R = atoi(argv[2]);
     filepath = argv[3];
 
+    // INIT AREA
     // Remove trailing newline. Too many nightmares because of this.
     filepath[strcspn(filepath, "\n")] = 0;
 
     // Create sorted list of mapper files
-    std::vector<myFile> files = readInputFiles(filepath);
-    
+    vector<myFile> files = readInputFiles(filepath);
+
+    // Precalculate powers
+    vector<unordered_set<int>> precalcPowers(R, unordered_set<int>());
+    Precalculate(R, precalcPowers);
+
+    // Lists of mapper outputs
+    list<list<int>> mapperResults(M, list<int>());
+
+    // Create Thread arguments
+    pthread_barrier_init(&barrier, NULL, R + M);
+    commonData data(precalcPowers, files, mapperResults, R);
+    data.barrier = &barrier;
+
+    // THREAD AREA
+    pthread_t mappers[M];
+    pthread_t reducers[R];
+    threadData* mappersData = (threadData*) calloc(M, sizeof(threadData));
+    threadData* reducersData = (threadData*) calloc(R, sizeof(threadData));
+    int r;
+
+    for(int id = 0; id < M; id++) {
+        mappersData[id].id = id;
+        mappersData[id].data = &data;
+        r = pthread_create(&mappers[id], NULL, mapperFunction, (void*) &(mappersData[id]));
+
+        if (r) {
+            printf("Eroare la crearea mapper-ului %d\n", id);
+            exit(-1);
+        }
+    }
+
+    for(int id = 0; id < R; id++) {
+        reducersData[id].id = id;
+        reducersData[id].data = &data;
+        r = pthread_create(&reducers[id], NULL, reducerFunction, (void*) &(reducersData[id]));
+
+        if (r) {
+            printf("Eroare la crearea reducer-ului %d\n", id);
+            exit(-1);
+        }
+    }
+
+    // JOINING THREADS
+    void *status;
+    for(int id = 0; id < M; id++) {
+        r = pthread_join(mappers[id], &status);
+
+        if (r) {
+            printf("Eroare la asteptarea mapper-ului %d\n", id);
+            exit(-1);
+        }
+    }
+
+    for(int id = 0; id < R; id++) {
+        r = pthread_join(reducers[id], &status);
+
+        if (r) {
+            printf("Eroare la asteptarea reducer-ului %d\n", id);
+            exit(-1);
+        }
+    }
+
+    // FREE AREA
+    pthread_barrier_destroy(&barrier);
     return 0;
 }
