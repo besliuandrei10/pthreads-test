@@ -95,6 +95,7 @@ void *mapperFunction(void *arg) {
             break;
         }
         pthread_mutex_unlock(data.mutex);
+        printf("Thread %d working on file %s\n", info->id, currentFile.name.c_str());
 
         ifstream f;
         f.open(currentFile.name);
@@ -105,10 +106,29 @@ void *mapperFunction(void *arg) {
             f >> number;
 
             for(int pwrCheck = 0; pwrCheck < data.R; pwrCheck++) {
-                if(data.precalculated[pwrCheck].find(number) != data.precalculated[0].end()) 
-                { data.mapperResults[info->id][pwrCheck].push_back(number); }
+
+                if(data.precalculated[pwrCheck].find(number) != data.precalculated[0].end()) {
+                    // If we already calculated this number, add it to the final list.
+                    data.mapperResults[info->id][pwrCheck].push_back(number);
+                } else {
+                    // Dumb check if number is a power of pwrCheck
+                    int base = 1;
+                    int power = pwrCheck + POW_OFFSET;
+                    int iter;
+                    
+                    do {
+                        iter = myPow(base, power);
+                        base++;
+                    } while (iter < number && iter != -1);
+
+                    if (iter == number) {
+                        data.precalculated[pwrCheck].insert(number);
+                        data.mapperResults[info->id][pwrCheck].push_back(number);
+                    }
+                }
             }
         }
+        f.close();
     } while(1);
 
     pthread_barrier_wait(data.barrier);
@@ -121,10 +141,21 @@ void *mapperFunction(void *arg) {
 void *reducerFunction(void *arg) {
     threadData* info = (threadData*) arg;
     commonData data = *(info->data);
-
     pthread_barrier_wait(data.barrier);
-    printf("Hello from reducer: %d\n", info->id);
 
+    ofstream output;
+    output.open("out" + to_string(info->id + POW_OFFSET) + ".txt");
+    unordered_set<int> uniqueNumbers;
+
+    for(auto map : data.mapperResults) {
+        for(auto elem : map[info->id]) {
+            if(uniqueNumbers.find(elem) == uniqueNumbers.end()) {
+                uniqueNumbers.insert(elem);
+            }
+        }
+    }
+    output << uniqueNumbers.size();
+    output.close();
     return NULL;
 }
 
@@ -157,7 +188,7 @@ int main(int argc, char* argv[]) {
 
     // Precalculate powers
     vector<unordered_set<int>> precalcPowers(R, unordered_set<int>());
-    Precalculate(R, precalcPowers);
+    // Precalculate(R, precalcPowers);
 
     // Lists of mapper outputs
     vector<vector<list<int>>> mapperResults(M, vector<list<int>>(R, list<int>()));
@@ -165,7 +196,7 @@ int main(int argc, char* argv[]) {
     // Create Thread arguments
     pthread_barrier_init(&barrier, NULL, R + M);
     pthread_mutex_init(&mutex, NULL);
-    commonData data(precalcPowers, files, mapperResults, R);
+    commonData data(precalcPowers, files, mapperResults, R, M);
     data.barrier = &barrier;
     data.mutex = &mutex;
 

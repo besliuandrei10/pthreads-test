@@ -27,15 +27,18 @@ struct commonData {
     pthread_barrier_t *barrier;
     pthread_mutex_t *mutex;
     int &R;
+    int &M;
     commonData(vector<unordered_set<int>> &v1,
               vector<myFile> &files,
               vector<vector<list<int>>> &map,
-              int &r) 
+              int &r,
+              int &m) 
               : 
                 precalculated(v1),
                 files(files),
                 mapperResults(map),
-                R(r) {}
+                R(r),
+                M(m) {}
 };
 
 struct threadData {
