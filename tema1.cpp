@@ -17,6 +17,12 @@ int myPow(const int &base, const int &pow) {
     return (output < 0)? -1 : output;
 }
 
+int min(int a, int b) {
+    return (a < b)? a : b;
+}
+
+bool myComparator(int a, int b) {return a < b;}
+
 /*
  *  Reads filenames from given filename and adds them to the vector of files to be mapped from.
 */
@@ -83,6 +89,25 @@ void *mapperFunction(void *arg) {
     commonData data = *(info->data);
     myFile currentFile;
 
+    // Execute precalculations paralelized
+    int start = info->id * (double)data.R / data.M;
+    int end = min((info->id + 1) * (double)data.R / data.M, data.R);
+
+    for(int i = start; i < end; i++) {
+        int number = -1; 
+        int base = 1;
+        int power = i + POW_OFFSET;
+
+        do
+        {
+            number = myPow(base, power);
+            data.precalculated[i].push_back(number);
+            base++;
+        } while (number != -1);
+    }
+
+    pthread_barrier_wait(data.barrierPrecalc);
+
     // GET FILE TO WORK ON
     do 
     {
@@ -95,7 +120,7 @@ void *mapperFunction(void *arg) {
             break;
         }
         pthread_mutex_unlock(data.mutex);
-        printf("Thread %d working on file %s\n", info->id, currentFile.name.c_str());
+        // printf("Thread %d working on file %s\n", info->id, currentFile.name.c_str());
 
         ifstream f;
         f.open(currentFile.name);
@@ -107,25 +132,24 @@ void *mapperFunction(void *arg) {
 
             for(int pwrCheck = 0; pwrCheck < data.R; pwrCheck++) {
 
-                if(data.precalculated[pwrCheck].find(number) != data.precalculated[0].end()) {
-                    // If we already calculated this number, add it to the final list.
+                if(binary_search(data.precalculated[pwrCheck].begin(), data.precalculated[pwrCheck].end(), number, myComparator)) {
                     data.mapperResults[info->id][pwrCheck].push_back(number);
-                } else {
-                    // Dumb check if number is a power of pwrCheck
-                    int base = 1;
-                    int power = pwrCheck + POW_OFFSET;
-                    int iter;
+                } // else {
+                //     // Dumb check if number is a power of pwrCheck
+                //     int base = 1;
+                //     int power = pwrCheck + POW_OFFSET;
+                //     int iter;
                     
-                    do {
-                        iter = myPow(base, power);
-                        base++;
-                    } while (iter < number && iter != -1);
+                //     do {
+                //         iter = myPow(base, power);
+                //         base++;
+                //     } while (iter < number && iter != -1);
 
-                    if (iter == number) {
-                        data.precalculated[pwrCheck].insert(number);
-                        data.mapperResults[info->id][pwrCheck].push_back(number);
-                    }
-                }
+                //     if (iter == number) {
+                //         data.precalculated[pwrCheck].insert(number);
+                //         data.mapperResults[info->id][pwrCheck].push_back(number);
+                //     }
+                // }
             }
         }
         f.close();
@@ -163,6 +187,7 @@ int main(int argc, char* argv[]) {
     
     // VARIABLES
     pthread_barrier_t barrier;
+    pthread_barrier_t barrierPrecalc;
     pthread_mutex_t mutex;
     int M = 0; // Number of Mappers.
     int R = 0; // Number of Reducers.
@@ -187,7 +212,7 @@ int main(int argc, char* argv[]) {
     vector<myFile> files = readInputFiles(filepath);
 
     // Precalculate powers
-    vector<unordered_set<int>> precalcPowers(R, unordered_set<int>());
+    vector<vector<int>> precalcPowers(R, vector<int>());
     // Precalculate(R, precalcPowers);
 
     // Lists of mapper outputs
@@ -195,9 +220,11 @@ int main(int argc, char* argv[]) {
 
     // Create Thread arguments
     pthread_barrier_init(&barrier, NULL, R + M);
+    pthread_barrier_init(&barrierPrecalc, NULL, M);
     pthread_mutex_init(&mutex, NULL);
     commonData data(precalcPowers, files, mapperResults, R, M);
     data.barrier = &barrier;
+    data.barrierPrecalc = &barrierPrecalc;
     data.mutex = &mutex;
 
     // THREAD AREA

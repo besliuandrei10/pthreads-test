@@ -21,14 +21,16 @@ struct myFile {
 
 
 struct commonData {
-    vector<unordered_set<int>> &precalculated;
+    vector<vector<int>> &precalculated;
     vector<myFile> &files;
     vector<vector<list<int>>> &mapperResults;
     pthread_barrier_t *barrier;
+    pthread_barrier_t *barrierPrecalc;
     pthread_mutex_t *mutex;
+
     int &R;
     int &M;
-    commonData(vector<unordered_set<int>> &v1,
+    commonData(vector<vector<int>> &v1,
               vector<myFile> &files,
               vector<vector<list<int>>> &map,
               int &r,
