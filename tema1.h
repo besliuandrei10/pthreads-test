@@ -21,7 +21,7 @@ struct myFile {
 
 
 struct commonData {
-    vector<vector<int>> &precalculated;
+    vector<unordered_set<int>> &precalculated;
     vector<myFile> &files;
     vector<vector<list<int>>> &mapperResults;
     pthread_barrier_t *barrier;
@@ -30,7 +30,7 @@ struct commonData {
 
     int &R;
     int &M;
-    commonData(vector<vector<int>> &v1,
+    commonData(vector<unordered_set<int>> &v1,
               vector<myFile> &files,
               vector<vector<list<int>>> &map,
               int &r,

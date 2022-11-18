@@ -61,27 +61,6 @@ vector<myFile> readInputFiles(const string &filename)
 }
 
 /*
- * Precalculates powers based on the number of reducers.
-*/
-void Precalculate(const int &R,
-                  vector<unordered_set<int>> &precalcPowers) {
-
-    for(int i = 0; i < R; i++) {
-        int number = -1; 
-        int base = 1;
-        int power = i + POW_OFFSET;
-
-        do
-        {
-            number = myPow(base, power);
-            precalcPowers[i].insert(number);
-            base++;
-        } while (number != -1);
-    }
-
-}
-
-/*
  * Mapper func.
 */
 void *mapperFunction(void *arg) {
@@ -101,7 +80,7 @@ void *mapperFunction(void *arg) {
         do
         {
             number = myPow(base, power);
-            data.precalculated[i].push_back(number);
+            data.precalculated[i].insert(number);
             base++;
         } while (number != -1);
     }
@@ -120,7 +99,6 @@ void *mapperFunction(void *arg) {
             break;
         }
         pthread_mutex_unlock(data.mutex);
-        // printf("Thread %d working on file %s\n", info->id, currentFile.name.c_str());
 
         ifstream f;
         f.open(currentFile.name);
@@ -132,24 +110,9 @@ void *mapperFunction(void *arg) {
 
             for(int pwrCheck = 0; pwrCheck < data.R; pwrCheck++) {
 
-                if(binary_search(data.precalculated[pwrCheck].begin(), data.precalculated[pwrCheck].end(), number, myComparator)) {
+                if(data.precalculated[pwrCheck].find(number) != data.precalculated[pwrCheck].end()) {
                     data.mapperResults[info->id][pwrCheck].push_back(number);
-                } // else {
-                //     // Dumb check if number is a power of pwrCheck
-                //     int base = 1;
-                //     int power = pwrCheck + POW_OFFSET;
-                //     int iter;
-                    
-                //     do {
-                //         iter = myPow(base, power);
-                //         base++;
-                //     } while (iter < number && iter != -1);
-
-                //     if (iter == number) {
-                //         data.precalculated[pwrCheck].insert(number);
-                //         data.mapperResults[info->id][pwrCheck].push_back(number);
-                //     }
-                // }
+                }
             }
         }
         f.close();
@@ -211,9 +174,8 @@ int main(int argc, char* argv[]) {
     // Create sorted list of mapper files
     vector<myFile> files = readInputFiles(filepath);
 
-    // Precalculate powers
-    vector<vector<int>> precalcPowers(R, vector<int>());
-    // Precalculate(R, precalcPowers);
+    // Precalculated powers vector
+    vector<unordered_set<int>> precalcPowers(R, unordered_set<int>());
 
     // Lists of mapper outputs
     vector<vector<list<int>>> mapperResults(M, vector<list<int>>(R, list<int>()));
@@ -240,7 +202,7 @@ int main(int argc, char* argv[]) {
         r = pthread_create(&mappers[id], NULL, mapperFunction, (void*) &(mappersData[id]));
 
         if (r) {
-            printf("Eroare la crearea mapper-ului %d\n", id);
+            printf("Error when creating mapper %d\n", id);
             exit(-1);
         }
     }
@@ -251,7 +213,7 @@ int main(int argc, char* argv[]) {
         r = pthread_create(&reducers[id], NULL, reducerFunction, (void*) &(reducersData[id]));
 
         if (r) {
-            printf("Eroare la crearea reducer-ului %d\n", id);
+            printf("Error when creating reducer %d\n", id);
             exit(-1);
         }
     }
@@ -262,7 +224,7 @@ int main(int argc, char* argv[]) {
         r = pthread_join(mappers[id], &status);
 
         if (r) {
-            printf("Eroare la asteptarea mapper-ului %d\n", id);
+            printf("Error when waiting for mapper %d\n", id);
             exit(-1);
         }
     }
@@ -273,7 +235,7 @@ int main(int argc, char* argv[]) {
         r = pthread_join(reducers[id], &status);
 
         if (r) {
-            printf("Eroare la asteptarea reducer-ului %d\n", id);
+            printf("Error when waiting for reducer %d\n", id);
             exit(-1);
         }
     }
