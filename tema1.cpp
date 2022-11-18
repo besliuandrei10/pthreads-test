@@ -8,36 +8,40 @@ bool compareByLength(const myFile &a, const myFile &b)
     return a.size < b.size;
 }
 
-int myPow(const int &base, const int &pow) {
+int myPow(const int &base, const int &pow)
+{
     int output = 1;
-    for(int i = 0; i < pow; i++) {
+    for (int i = 0; i < pow; i++)
+    {
         output *= base;
     }
 
-    return (output < 0)? -1 : output;
+    return (output < 0) ? -1 : output;
 }
 
-int min(int a, int b) {
-    return (a < b)? a : b;
+int min(int a, int b)
+{
+    return (a < b) ? a : b;
 }
 
-bool myComparator(int a, int b) {return a < b;}
+bool myComparator(int a, int b) { return a < b; }
 
 /*
  *  Reads filenames from given filename and adds them to the vector of files to be mapped from.
-*/
-vector<myFile> readInputFiles(const string &filename) 
+ */
+vector<myFile> readInputFiles(const string &filename)
 {
     // Open file containing mapper file names.
     ifstream f;
     f.open(filename);
-    
+
     // Read number of entries.
     int n;
     f >> n;
 
     vector<myFile> files;
-    for(auto i = 0; i < n; i++) {
+    for (auto i = 0; i < n; i++)
+    {
         string mapperFile;
         f >> mapperFile;
 
@@ -62,9 +66,10 @@ vector<myFile> readInputFiles(const string &filename)
 
 /*
  * Mapper func.
-*/
-void *mapperFunction(void *arg) {
-    threadData* info = (threadData*) arg;
+ */
+void *mapperFunction(void *arg)
+{
+    threadData *info = (threadData *)arg;
     commonData data = *(info->data);
     myFile currentFile;
 
@@ -72,8 +77,9 @@ void *mapperFunction(void *arg) {
     int start = info->id * (double)data.R / data.M;
     int end = min((info->id + 1) * (double)data.R / data.M, data.R);
 
-    for(int i = start; i < end; i++) {
-        int number = -1; 
+    for (int i = start; i < end; i++)
+    {
+        int number = -1;
         int base = 1;
         int power = i + POW_OFFSET;
 
@@ -88,57 +94,64 @@ void *mapperFunction(void *arg) {
     pthread_barrier_wait(data.barrierPrecalc);
 
     // GET FILE TO WORK ON
-    do 
+    do
     {
-        pthread_mutex_lock(data.mutex);
-        if (data.files.size() != 0) {
+        pthread_mutex_lock(data.canSelectFile);
+        if (data.files.size() != 0)
+        {
             currentFile = data.files.back();
             data.files.pop_back();
-        } else {
-            pthread_mutex_unlock(data.mutex);
+        }
+        else
+        {
+            pthread_mutex_unlock(data.canSelectFile);
             break;
         }
-        pthread_mutex_unlock(data.mutex);
+        pthread_mutex_unlock(data.canSelectFile);
 
         ifstream f;
         f.open(currentFile.name);
         int n;
         f >> n;
-        for(int i = 0; i < n; i++) {
+        for (int i = 0; i < n; i++)
+        {
             int number;
             f >> number;
 
-            for(int pwrCheck = 0; pwrCheck < data.R; pwrCheck++) {
+            for (int pwrCheck = 0; pwrCheck < data.R; pwrCheck++)
+            {
 
-                if(data.precalculated[pwrCheck].find(number) != data.precalculated[pwrCheck].end()) {
+                if (data.precalculated[pwrCheck].find(number) != data.precalculated[pwrCheck].end())
+                {
                     data.mapperResults[info->id][pwrCheck].push_back(number);
                 }
             }
         }
         f.close();
-    } while(1);
+    } while (1);
 
-    pthread_barrier_wait(data.barrier);
+    pthread_barrier_wait(data.barrierPhase);
     return NULL;
 }
 
 /*
  * Reducer func.
-*/
-void *reducerFunction(void *arg) {
-    threadData* info = (threadData*) arg;
+ */
+void *reducerFunction(void *arg)
+{
+    threadData *info = (threadData *)arg;
     commonData data = *(info->data);
-    pthread_barrier_wait(data.barrier);
+    pthread_barrier_wait(data.barrierPhase);
 
     ofstream output;
     output.open("out" + to_string(info->id + POW_OFFSET) + ".txt");
     unordered_set<int> uniqueNumbers;
 
-    for(auto map : data.mapperResults) {
-        for(auto elem : map[info->id]) {
-            if(uniqueNumbers.find(elem) == uniqueNumbers.end()) {
-                uniqueNumbers.insert(elem);
-            }
+    for (auto map : data.mapperResults)
+    {
+        for (auto elem : map[info->id])
+        {
+            uniqueNumbers.insert(elem);
         }
     }
     output << uniqueNumbers.size();
@@ -146,18 +159,20 @@ void *reducerFunction(void *arg) {
     return NULL;
 }
 
-int main(int argc, char* argv[]) {
-    
+int main(int argc, char *argv[])
+{
+
     // VARIABLES
-    pthread_barrier_t barrier;
+    pthread_barrier_t barrierPhase;
     pthread_barrier_t barrierPrecalc;
-    pthread_mutex_t mutex;
-    int M = 0; // Number of Mappers.
-    int R = 0; // Number of Reducers.
-    char* filepath; // Path to file.
+    pthread_mutex_t canSelectFile;
+    int M = 0;      // Number of Mappers.
+    int R = 0;      // Number of Reducers.
+    char *filepath; // Path to file.
 
     // Check for correct arguments.
-    if (argc < 3) {
+    if (argc < 3)
+    {
         printf("./tema1 <numar_mapperi> <numar_reduceri> <fisier_intrare>");
         return 0;
     }
@@ -181,38 +196,42 @@ int main(int argc, char* argv[]) {
     vector<vector<list<int>>> mapperResults(M, vector<list<int>>(R, list<int>()));
 
     // Create Thread arguments
-    pthread_barrier_init(&barrier, NULL, R + M);
+    pthread_barrier_init(&barrierPhase, NULL, R + M);
     pthread_barrier_init(&barrierPrecalc, NULL, M);
-    pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_init(&canSelectFile, NULL);
     commonData data(precalcPowers, files, mapperResults, R, M);
-    data.barrier = &barrier;
+    data.barrierPhase = &barrierPhase;
     data.barrierPrecalc = &barrierPrecalc;
-    data.mutex = &mutex;
+    data.canSelectFile = &canSelectFile;
 
     // THREAD AREA
     pthread_t mappers[M];
     pthread_t reducers[R];
-    threadData* mappersData = (threadData*) calloc(M, sizeof(threadData));
-    threadData* reducersData = (threadData*) calloc(R, sizeof(threadData));
+    threadData *mappersData = (threadData *)calloc(M, sizeof(threadData));
+    threadData *reducersData = (threadData *)calloc(R, sizeof(threadData));
     int r;
 
-    for(int id = 0; id < M; id++) {
+    for (int id = 0; id < M; id++)
+    {
         mappersData[id].id = id;
         mappersData[id].data = &data;
-        r = pthread_create(&mappers[id], NULL, mapperFunction, (void*) &(mappersData[id]));
+        r = pthread_create(&mappers[id], NULL, mapperFunction, (void *)&(mappersData[id]));
 
-        if (r) {
+        if (r)
+        {
             printf("Error when creating mapper %d\n", id);
             exit(-1);
         }
     }
 
-    for(int id = 0; id < R; id++) {
+    for (int id = 0; id < R; id++)
+    {
         reducersData[id].id = id;
         reducersData[id].data = &data;
-        r = pthread_create(&reducers[id], NULL, reducerFunction, (void*) &(reducersData[id]));
+        r = pthread_create(&reducers[id], NULL, reducerFunction, (void *)&(reducersData[id]));
 
-        if (r) {
+        if (r)
+        {
             printf("Error when creating reducer %d\n", id);
             exit(-1);
         }
@@ -220,29 +239,31 @@ int main(int argc, char* argv[]) {
 
     // JOINING THREADS
     void *status;
-    for(int id = 0; id < M; id++) {
+    for (int id = 0; id < M; id++)
+    {
         r = pthread_join(mappers[id], &status);
 
-        if (r) {
+        if (r)
+        {
             printf("Error when waiting for mapper %d\n", id);
             exit(-1);
         }
     }
 
-    
-
-    for(int id = 0; id < R; id++) {
+    for (int id = 0; id < R; id++)
+    {
         r = pthread_join(reducers[id], &status);
 
-        if (r) {
+        if (r)
+        {
             printf("Error when waiting for reducer %d\n", id);
             exit(-1);
         }
     }
 
     // FREE AREA
-    pthread_barrier_destroy(&barrier);
-    pthread_mutex_destroy(&mutex);
+    pthread_barrier_destroy(&barrierPhase);
+    pthread_mutex_destroy(&canSelectFile);
     free(mappersData);
     free(reducersData);
     return 0;
